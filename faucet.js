@@ -1,79 +1,101 @@
 import express from 'express';
-import * as path from 'path'
-
+import path from 'path';
+import { fileURLToPath } from 'url';  // For working with __dirname in ES Modules
 import { DirectSecp256k1HdWallet } from "@cosmjs/proto-signing";
 import { SigningStargateClient } from "@cosmjs/stargate";
-import { FrequencyChecker } from './checker';
+import { FrequencyChecker } from './checker.js'; // Adjust extension as per ESM requirement
+import conf from './config.js'; // Ensure config file is also ESM compatible
 
-import conf from './config'
+// __dirname workaround for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // load config
-console.log("loaded config: ", conf)
+console.log("loaded config: ", conf);
 
-const app = express()
+const app = express();
+const checker = new FrequencyChecker(conf);
 
-const checker = new FrequencyChecker(conf)
-
+// Serve the main HTML page
 app.get('/', (req, res) => {
-  res.sendFile(path.resolve('./index.html'));
-})
+  res.sendFile(path.resolve(__dirname, './index.html'));
+});
 
+// Serve the configuration as JSON
 app.get('/config.json', async (req, res) => {
-  const wallet = await DirectSecp256k1HdWallet.fromMnemonic(conf.sender.mnemonic, conf.sender.option);
-  const [firstAccount] = await wallet.getAccounts();
-  const project = conf.project
-  project.sample = firstAccount.address
-  res.send(project);
-})
+  try {
+    const wallet = await DirectSecp256k1HdWallet.fromMnemonic(conf.sender.mnemonic, conf.sender.option);
+    const [firstAccount] = await wallet.getAccounts();
 
+    const project = { ...conf.project, sample: firstAccount.address };
+    res.json(project);
+  } catch (err) {
+    console.error('Error generating config:', err);
+    res.status(500).send({ result: 'Error generating config' });
+  }
+});
+
+// Handle token requests
 app.get('/send/:address', async (req, res) => {
-  const {address} = req.params;
-  console.log('request tokens to ', address, req.ip)
+  const { address } = req.params;
+  const ip = req.ip;  // Get client IP
+
+  console.log('Request tokens to:', address, ip);
+
   if (address) {
     try {
+      // Check if the address starts with the correct prefix
       if (address.startsWith(conf.sender.option.prefix)) {
-        if( await checker.checkAddress(address) && await checker.checkIp(req.ip) ) {
-          checker.update(req.ip) // get ::1 on localhost
-          sendTx(address).then(ret => {
-            console.log('sent tokens to ', address)
-            checker.update(address)
-            res.send({ result: ret })
-          });
-        }else {
-          res.send({ result: "You requested too often" })
+        // Check address and IP request frequency
+        if (await checker.checkAddress(address) && await checker.checkIp(ip)) {
+          // Update the frequency checker
+          checker.update(ip);
+
+          // Send the transaction
+          const result = await sendTx(address);
+          console.log('Sent tokens to:', address);
+          checker.update(address); // Update after successful transaction
+          res.send({ result });
+        } else {
+          res.send({ result: "You requested too often" });
         }
       } else {
-        res.send({ result: `Address [${address}] is not supported.` })
+        res.send({ result: `Address [${address}] is not supported.` });
       }
     } catch (err) {
-      console.error(err);
-      res.send({ result: 'Failed, Please contact to admin.' })
+      console.error('Transaction error:', err);
+      res.status(500).send({ result: 'Failed, please contact admin.' });
     }
-
   } else {
-    // send result
-    res.send({ result: 'address is required' });
+    res.status(400).send({ result: 'Address is required' });
   }
-})
+});
 
+// Start the server
 app.listen(conf.port, () => {
-  console.log(`Faucet app listening on port ${conf.port}`)
-})
+  console.log(`Faucet app listening on port ${conf.port}`);
+});
 
-
+// Function to send tokens
 async function sendTx(recipient) {
-  // const mnemonic = "surround miss nominee dream gap cross assault thank captain prosper drop duty group candy wealth weather scale put";
-  const wallet = await DirectSecp256k1HdWallet.fromMnemonic(conf.sender.mnemonic, conf.sender.option);
-  const [firstAccount] = await wallet.getAccounts();
+  try {
+    const wallet = await DirectSecp256k1HdWallet.fromMnemonic(conf.sender.mnemonic, conf.sender.option);
+    const [firstAccount] = await wallet.getAccounts();
 
-  // console.log("sender", firstAccount);
+    const rpcEndpoint = conf.blockchain.rpc_endpoint;
+    const client = await SigningStargateClient.connectWithSigner(rpcEndpoint, wallet);
 
-  const rpcEndpoint = conf.blockchain.rpc_endpoint;
-  const client = await SigningStargateClient.connectWithSigner(rpcEndpoint, wallet);
+    const amount = [conf.tx.amount];
+    const fee = {
+      amount: conf.tx.fee.amount,
+      gas: conf.tx.fee.gas,
+    };
 
-  // const recipient = "cosmos1xv9tklw7d82sezh9haa573wufgy59vmwe6xxe5";
-  const amount = conf.tx.amount;
-  const fee = conf.tx.fee;
-  return client.sendTokens(firstAccount.address, recipient, [amount], fee);
+    // Send tokens and return the transaction result
+    const result = await client.sendTokens(firstAccount.address, recipient, amount, fee);
+    return result;
+  } catch (err) {
+    console.error('Error sending transaction:', err);
+    throw new Error('Transaction failed');
+  }
 }
-
