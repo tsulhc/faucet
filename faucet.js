@@ -55,21 +55,23 @@ app.get('/send/:address', async (req, res) => {
           const result = await sendTx(address);
           console.log('Sent tokens to:', address);
           checker.update(address); // Update after successful transaction
-          res.send({ result });
+
+          res.json(result);  // Ensure response is valid JSON
         } else {
-          res.send({ result: "You requested too often" });
+          res.json({ result: "You requested too often" });
         }
       } else {
-        res.send({ result: `Address [${address}] is not supported.` });
+        res.json({ result: `Address [${address}] is not supported.` });
       }
     } catch (err) {
       console.error('Transaction error:', err);
-      res.status(500).send({ result: 'Failed, please contact admin.' });
+      res.status(500).json({ result: 'Failed, please contact admin.' });
     }
   } else {
-    res.status(400).send({ result: 'Address is required' });
+    res.status(400).json({ result: 'Address is required' });
   }
 });
+
 
 // Start the server
 app.listen(conf.port, () => {
@@ -91,11 +93,23 @@ async function sendTx(recipient) {
       gas: conf.tx.fee.gas,
     };
 
+    console.log('Sending transaction to:', recipient);
+    console.log('Transaction details:', { amount, fee });
+
     // Send tokens and return the transaction result
     const result = await client.sendTokens(firstAccount.address, recipient, amount, fee);
-    return result;
+
+    // Convert any BigInt values to string to avoid serialization issues
+    const resultWithStringBigInts = JSON.parse(
+      JSON.stringify(result, (key, value) =>
+        typeof value === 'bigint' ? value.toString() : value
+      )
+    );
+
+    return resultWithStringBigInts;
   } catch (err) {
     console.error('Error sending transaction:', err);
     throw new Error('Transaction failed');
   }
 }
+
