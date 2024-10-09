@@ -2,38 +2,38 @@
 import { stringToPath } from '@cosmjs/crypto'
 
 export default {
-    port: 80, // http port 
+    port: 5174, // http port
     db: {
-        path: "./db/faucet.db" // save request states 
+        path: "./db/faucet.db" // save request states
     },
     project: {
-        name: "Ping Testnet",
-        logo: "https://ping.pub/logo.svg",
-        deployer: `<a href="#">Your Brand</a>`
+        name: "Prysm Devnet",
+        logo: "https://kleomed.es/logo/prysm.png",
+        deployer: `<a href="https://kleomed.es">Kleomedes</a>`
     },
     blockchain: {
         // make sure that CORS is enabled in rpc section in config.toml
         // cors_allowed_origins = ["*"]
-        rpc_endpoint: "https://rpc.sentry-02.theta-testnet.polypore.xyz",
+        rpc_endpoint: "https://prysm-rpc-devnet.kleomedes.network",
 
     },
     sender: {
-        mnemonic: "surround miss nominee dream gap cross assault thank captain prosper drop duty group candy wealth weather scale put",
+        mnemonic: "",
         option: {
             hdPaths: [stringToPath("m/44'/118'/0'/0/0")],
-            prefix: "cosmos"
+            prefix: "prysm"
         }
     },
     tx: {
         amount: {
-            denom: "uatom",
-            amount: "10000"
+            denom: "uprysm",
+            amount: "2000000"
         },
         fee: {
             amount: [
                 {
-                    amount: "1000",
-                    denom: "uatom"
+                    amount: "500",
+                    denom: "uprysm"
                 }
             ],
             gas: "200000"
@@ -41,9 +41,9 @@ export default {
     },
     limit: {
         // how many times each wallet address is allowed in a window(24h)
-        address: 1, 
+        address: 1,
         // how many times each ip is allowed in a window(24h),
         // if you use proxy, double check if the req.ip is return client's ip.
-        ip: 10 
+        ip: 1
     }
 }
